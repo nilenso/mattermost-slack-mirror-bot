@@ -32,3 +32,6 @@ Session.vim
 .agignore
 .ctags
 tags
+vendor
+.idea
+mattermost-slack-mirror-bot

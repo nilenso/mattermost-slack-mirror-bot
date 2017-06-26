@@ -1,28 +1,39 @@
-hash: 59f8fdb5884e871f2585ef83ec873642ac90ca0bd9b0326e7e6d4643faca6f57
-updated: 2016-11-05T10:11:17.087093383-06:00
+hash: d42aad7503d44f239f88b3930299440910b729014b63917ba3939d24084fb739
+updated: 2017-06-26T21:49:00.468097341+05:30
 imports:
 - name: github.com/alecthomas/log4go
-  version: e5dc62318d9bd58682f1dceb53a4b24e8253682f
+  version: 3fbce08846379ec7f4f6bc7fce6dd01ce28fae4c
+  repo: https://github.com/mattermost/log4go.git
 - name: github.com/gorilla/websocket
-  version: 1f512fc3f05332ba7117626cdfb4e07474e58e60
+  version: 3ab3a8b8831546bd18fd182c20687ca853b2bb13
 - name: github.com/mattermost/platform
-  version: 428444d1852f3949ece0a9f6b73843f46c4a0fb7
+  version: 8b83e9d4279718c8f9797c6a9c081245231cbba0
   subpackages:
   - model
 - name: github.com/nicksnyder/go-i18n
-  version: 37e5c2de3e03e4b82693e3fcb4a6aa2cc4eb07e3
+  version: 3e70a1a463008cea6726380c908b1a6a8bdf7b24
   subpackages:
   - i18n
   - i18n/bundle
   - i18n/language
   - i18n/translation
+- name: github.com/nlopes/slack
+  version: c86337c0ef2486a15edd804355d9c73d2f2caed1
 - name: github.com/pborman/uuid
   version: a97ce2ca70fa5a848076093f05e639a89ca34d06
+- name: github.com/pelletier/go-buffruneio
+  version: df1e16fde7fc330a0ca68167c23bf7ed6ac31d6d
+- name: github.com/pelletier/go-toml
+  version: 439fbba1f887c286024370cb4f281ba815c4c7d7
 - name: golang.org/x/crypto
   version: 6ab629be5e31660579425a738ba8870beb5b7404
   subpackages:
   - bcrypt
   - blowfish
+- name: golang.org/x/net
+  version: 5f8847ae0d0e90b6a9dc8148e7ad616874625171
+  subpackages:
+  - websocket
 - name: gopkg.in/yaml.v2
   version: a5b47d31c556af34a302ce5d659e6fea44d90de0
 testImports: []
