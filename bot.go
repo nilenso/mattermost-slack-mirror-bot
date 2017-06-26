@@ -1,35 +1,43 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"github.com/mattermost/platform/model"
 	"github.com/nlopes/slack"
 	"time"
 )
 
+var ErrTimeout = errors.New("Timeout")
+
 type Bot struct {
 	*model.User
-	Server   string
-	Team     string
-	location *time.Location
+	server            string
+	team              string
+	location          *time.Location
+	heartbeatInterval time.Duration
+	quitChan          chan struct{}
 
-	mmUsers       map[string]*model.User
+	mmUsers        map[string]*model.User
+	mmClient       *model.Client
+	mmWSClient     *model.WebSocketClient
+	mmEventHandler func(*model.WebSocketEvent)
+
 	slackUsers    map[string]*slack.User
 	slackChannels map[string]*slack.Channel
-
-	mmClient    *model.Client
-	mmWSClient  *model.WebSocketClient
-	slackClient *slack.Client
+	slackClient   *slack.Client
 }
 
-func NewBot(server, team, email, password, slackToken, location string) (*Bot, error) {
+func NewBot(server, team, email, password, slackToken, location string, heartbeatInterval time.Duration) (*Bot, error) {
 	bot := &Bot{
-		Server: server,
-		Team:   team,
+		server: server,
+		team:   team,
 		User: &model.User{
 			Email:    email,
 			Password: password,
 		},
+		heartbeatInterval: heartbeatInterval,
+		quitChan:          make(chan struct{}),
 	}
 
 	loc, err := time.LoadLocation(location)
@@ -72,7 +80,7 @@ func NewBot(server, team, email, password, slackToken, location string) (*Bot, e
 }
 
 func (bot *Bot) createMMClient() error {
-	client := model.NewClient("https://" + bot.Server)
+	client := model.NewClient("https://" + bot.server)
 	if _, err := client.GetPing(); err != nil {
 		return err
 	}
@@ -82,7 +90,7 @@ func (bot *Bot) createMMClient() error {
 		return fmt.Errorf("Error in logging in: %+v", err)
 	}
 
-	wsClient, err := model.NewWebSocketClient("wss://"+bot.Server, client.AuthToken)
+	wsClient, err := model.NewWebSocketClient("wss://"+bot.server, client.AuthToken)
 	if err != nil {
 		return err
 	}
@@ -107,14 +115,14 @@ func (bot *Bot) setMMTeam() error {
 		initialLoad := res.Data.(*model.InitialLoad)
 		var botTeam *model.Team
 		for _, team := range initialLoad.Teams {
-			if team.Name == bot.Team {
+			if team.Name == bot.team {
 				botTeam = team
 				break
 			}
 		}
 
 		if botTeam == nil {
-			return fmt.Errorf("Could not find bot team: " + bot.Team)
+			return fmt.Errorf("Could not find bot team: " + bot.team)
 		}
 
 		bot.mmClient.SetTeamId(botTeam.Id)
@@ -167,13 +175,58 @@ func (bot *Bot) getMMUsers() error {
 	}
 }
 
-func (bot *Bot) ListenMM() chan *model.WebSocketEvent {
+func (bot *Bot) ListenMM(eventHandler func(*model.WebSocketEvent)) error {
+	bot.mmEventHandler = eventHandler
+	return bot.listenMM()
+}
+
+func (bot *Bot) listenMM() error {
+	bot.closeMMWSClient()
+	if err := bot.mmWSClient.Connect(); err != nil {
+		return err
+	}
+
 	bot.mmWSClient.Listen()
-	return bot.mmWSClient.EventChannel
+	timeoutChan := make(chan struct{})
+	go bot.startHeartbeat(timeoutChan)
+	for {
+		select {
+		case ev := <-bot.mmWSClient.EventChannel:
+			bot.mmEventHandler(ev)
+		case <-timeoutChan:
+			return ErrTimeout
+		}
+	}
+
+	return nil
+}
+
+func (bot *Bot) startHeartbeat(timeoutChan chan struct{}) {
+	for {
+		bot.mmWSClient.GetStatusesByIds([]string{bot.Id})
+		timeout := time.After(bot.heartbeatInterval)
+		select {
+		case <-bot.quitChan:
+			return
+		case <-bot.mmWSClient.ResponseChannel:
+			time.Sleep(bot.heartbeatInterval)
+		case <-timeout:
+			timeoutChan <- struct{}{}
+			return
+		}
+	}
+
 }
 
 func (bot *Bot) Stop() {
-	bot.mmWSClient.Close()
+	bot.closeMMWSClient()
+	bot.quitChan <- struct{}{}
+}
+
+func (bot *Bot) closeMMWSClient() {
+	if bot.mmWSClient.Conn != nil {
+		bot.mmWSClient.Close()
+	}
 }
 
 func (bot *Bot) getSlackUsers() error {

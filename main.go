@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"time"
 )
 
 func main() {
@@ -21,29 +22,32 @@ func main() {
 	slackToken := os.Args[5]
 	location := os.Args[6]
 
-	bot, err := NewBot(server, team, email, password, slackToken, location)
+	bot, err := NewBot(server, team, email, password, slackToken, location, 2*time.Second)
 	if err != nil {
-		fmt.Printf("Error in creating bot, :%v\n", err)
+		fmt.Printf("Error in creating bot: %+v\n", err)
 		os.Exit(1)
 	}
+
 	setupGracefulShutdown(bot)
 	defer bot.Stop()
 	fmt.Println("Connected the bot")
 
-	eventChan := bot.ListenMM()
-	fmt.Println("Listening to mm events")
-	go func() {
-		for {
-			select {
-			case ev := <-eventChan:
-				if ev.Event == model.WEBSOCKET_EVENT_POSTED {
-					handlePostEvent(bot, ev)
-				}
-			}
+	for {
+		fmt.Println("Listening to mm events")
+		err := bot.ListenMM(func(ev *model.WebSocketEvent) {
+			handleEvent(bot, ev)
+		})
+		if err != nil {
+			fmt.Printf("Error in listening to MM: %+v\n", err)
 		}
-	}()
-
-	select {}
+		time.Sleep(time.Second)
+	}
+}
+func handleEvent(bot *Bot, ev *model.WebSocketEvent) {
+	switch ev.Event {
+	case model.WEBSOCKET_EVENT_POSTED:
+		handlePostEvent(bot, ev)
+	}
 }
 func handlePostEvent(bot *Bot, event *model.WebSocketEvent) {
 	post := model.PostFromJson(strings.NewReader(event.Data["post"].(string)))
@@ -56,7 +60,7 @@ func handlePostEvent(bot *Bot, event *model.WebSocketEvent) {
 
 		channel := event.Data["channel_name"].(string)
 		if err := bot.PostToSlack(channel, user.Email, post.Message); err != nil {
-			fmt.Printf("Error in posting to slack: %+v", err)
+			fmt.Printf("Error in posting to slack: %+v\n", err)
 			return
 		}
 	}
