@@ -8,6 +8,10 @@ import (
 )
 
 type Slack struct {
+	quitChan chan struct{}
+	doneChan chan struct{}
+	log      func(format string, args ...interface{})
+
 	token          string
 	usersByEmail   map[string]*slack.User
 	channelsByName map[string]*slack.Channel
@@ -17,21 +21,54 @@ type Slack struct {
 	rtmClient      *slack.RTM
 }
 
-func (bot *Bot) createSlackClient() error {
-	slackClient := slack.New(bot.Slack.token)
-	if _, err := slackClient.AuthTest(); err != nil {
-		return err
+func NewSlackBot(slackToken string) *Slack {
+	return &Slack{
+		token:    slackToken,
+		quitChan: make(chan struct{}),
+		doneChan: make(chan struct{}),
 	}
-	bot.Slack.client = slackClient
+}
 
-	bot.Slack.rtmClient = bot.Slack.client.NewRTM()
-	go bot.Slack.rtmClient.ManageConnection()
+func (bot *Slack) Start() error {
+	if err := bot.createClient(); err != nil {
+		return fmt.Errorf("Error in connecting to slack: %+v", err)
+	}
+	bot.log("Created Slack client")
+
+	if err := bot.getUsers(); err != nil {
+		return fmt.Errorf("Error in getting slack users: %+v", err)
+	}
+	bot.log("Got Slack users")
+
+	if err := bot.getChannels(); err != nil {
+		return fmt.Errorf("Error in getting slack channels: %+v", err)
+	}
+	bot.log("Got Slack channels")
 
 	return nil
 }
 
-func (bot *Bot) getSlackUsers() error {
-	if users, err := bot.Slack.client.GetUsers(); err != nil {
+func (bot *Slack) Stop() {
+	bot.rtmClient.Disconnect()
+	bot.quitChan <- struct{}{}
+	<-bot.doneChan
+}
+
+func (bot *Slack) createClient() error {
+	slackClient := slack.New(bot.token)
+	if _, err := slackClient.AuthTest(); err != nil {
+		return err
+	}
+	bot.client = slackClient
+
+	bot.rtmClient = bot.client.NewRTM()
+	go bot.rtmClient.ManageConnection()
+
+	return nil
+}
+
+func (bot *Slack) getUsers() error {
+	if users, err := bot.client.GetUsers(); err != nil {
 		return err
 	} else {
 		userEmailMap := make(map[string]*slack.User)
@@ -46,19 +83,19 @@ func (bot *Bot) getSlackUsers() error {
 			}
 		}
 
-		bot.Slack.usersByEmail = userEmailMap
-		bot.Slack.usersById = userIdMap
+		bot.usersByEmail = userEmailMap
+		bot.usersById = userIdMap
 		return nil
 	}
 }
 
-func (bot *Bot) GetSlackUser(userId string) (*slack.User, bool) {
-	user, ok := bot.Slack.usersById[userId]
+func (bot *Slack) GetUser(userId string) (*slack.User, bool) {
+	user, ok := bot.usersById[userId]
 	return user, ok
 }
 
-func (bot *Bot) getSlackChannels() error {
-	if channels, err := bot.Slack.client.GetChannels(true); err != nil {
+func (bot *Slack) getChannels() error {
+	if channels, err := bot.client.GetChannels(true); err != nil {
 		return err
 	} else {
 		channelNameMap := make(map[string]*slack.Channel)
@@ -69,23 +106,23 @@ func (bot *Bot) getSlackChannels() error {
 			channelIdMap[channel.ID] = &channel
 		}
 
-		bot.Slack.channelsByName = channelNameMap
-		bot.Slack.channelsById = channelIdMap
+		bot.channelsByName = channelNameMap
+		bot.channelsById = channelIdMap
 		return nil
 	}
 }
 
-func (bot *Bot) GetSlackChannel(channelId string) (*slack.Channel, bool) {
-	channel, ok := bot.Slack.channelsById[channelId]
+func (bot *Slack) GetChannel(channelId string) (*slack.Channel, bool) {
+	channel, ok := bot.channelsById[channelId]
 	return channel, ok
 }
 
-func (bot *Bot) ListenSlack(eventHandler func(event *slack.RTMEvent)) {
+func (bot *Slack) Listen(eventHandler func(event *slack.RTMEvent)) {
 	bot.log("Listening to Slack events")
 
 	for {
 		select {
-		case ev := <-bot.Slack.rtmClient.IncomingEvents:
+		case ev := <-bot.rtmClient.IncomingEvents:
 			eventHandler(&ev)
 		case <-bot.quitChan:
 			bot.log("Stopped listening to Slack events")
@@ -97,7 +134,7 @@ func (bot *Bot) ListenSlack(eventHandler func(event *slack.RTMEvent)) {
 
 var userIdMentionRe = regexp.MustCompile(`<@U[A-Z0-9]+>`)
 
-func (bot *Bot) SubsSlackUserIdMentions(text string) string {
+func (bot *Slack) SubsUserIdMentions(text string) string {
 	res := userIdMentionRe.FindAllStringSubmatch(text, -1)
 	if len(res) == 0 {
 		return text
@@ -107,7 +144,7 @@ func (bot *Bot) SubsSlackUserIdMentions(text string) string {
 	for _, match := range res {
 		userMention := match[0]
 		userId := strings.TrimSuffix(strings.TrimPrefix(userMention, "<@"), ">")
-		user, ok := bot.GetSlackUser(userId)
+		user, ok := bot.GetUser(userId)
 		if !ok {
 			continue
 		}
@@ -118,17 +155,17 @@ func (bot *Bot) SubsSlackUserIdMentions(text string) string {
 	return subsText
 }
 
-func (bot *Bot) PostToSlack(channelName, userEmail, message string) error {
-	channel, ok := bot.Slack.channelsByName[channelName]
+func (bot *Slack) Post(channelName, userEmail, message string) error {
+	channel, ok := bot.channelsByName[channelName]
 	if !ok {
 		return fmt.Errorf("Could not find channel: %s", channelName)
 	}
 
-	user, ok := bot.Slack.usersByEmail[userEmail]
+	user, ok := bot.usersByEmail[userEmail]
 	if !ok {
 		return fmt.Errorf("Could not find user: %s", userEmail)
 	}
-	_, _, err := bot.Slack.client.PostMessage(channel.ID, message, slack.PostMessageParameters{
+	_, _, err := bot.client.PostMessage(channel.ID, message, slack.PostMessageParameters{
 		Username:  user.Name,
 		IconURL:   user.Profile.Image48,
 		LinkNames: 1,

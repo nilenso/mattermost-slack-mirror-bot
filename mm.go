@@ -7,7 +7,14 @@ import (
 	"time"
 )
 
+var ErrTimeout = errors.New("Timeout")
+
 type MM struct {
+	heartbeatInterval time.Duration
+	quitChan          chan struct{}
+	doneChan          chan struct{}
+	log               func(format string, args ...interface{})
+
 	user         *mm.User
 	server       string
 	team         string
@@ -20,62 +27,111 @@ type MM struct {
 
 var errQuit = errors.New("QUIT")
 
-func (bot *Bot) createMMClient() error {
-	client := mm.NewClient("https://" + bot.MM.server)
+func NewMMBot(server, team, email, password string, heartbeatInterval time.Duration) *MM {
+	return &MM{
+		server: server,
+		team:   team,
+		user: &mm.User{
+			Email:    email,
+			Password: password,
+		},
+		heartbeatInterval: heartbeatInterval,
+		quitChan:          make(chan struct{}),
+		doneChan:          make(chan struct{}),
+	}
+}
+
+func (bot *MM) Start() error {
+	if err := bot.createClient(); err != nil {
+		return fmt.Errorf("Error in creating mm client: %+v", err)
+	}
+	bot.log("Created MM client")
+
+	if err := bot.setTeam(); err != nil {
+		return fmt.Errorf("Error in setting up mm team: %+v", err)
+	}
+	bot.log("Set up MM team")
+
+	if err := bot.getUsers(); err != nil {
+		return fmt.Errorf("Error in getting mm users: %+v", err)
+	}
+	bot.log("Got MM users")
+
+	if err := bot.joinChannels(); err != nil {
+		return fmt.Errorf("Error in joining mm channels: %+v", err)
+	}
+	bot.log("Joined MM channels")
+
+	if err := bot.getChannels(); err != nil {
+		return fmt.Errorf("Error in getting mm channels: %+v", err)
+	}
+	bot.log("Got MM channels")
+
+	return nil
+}
+
+func (bot *MM) Stop() {
+	bot.closeWSClient()
+	bot.quitChan <- struct{}{}
+	<-bot.doneChan
+}
+
+func (bot *MM) createClient() error {
+	client := mm.NewClient("https://" + bot.server)
 	if _, err := client.GetPing(); err != nil {
 		return err
 	}
-	bot.MM.client = client
+	bot.client = client
 
 	if err := bot.login(); err != nil {
 		return fmt.Errorf("Error in logging in: %+v", err)
 	}
 
-	wsClient, err := mm.NewWebSocketClient("wss://"+bot.MM.server, client.AuthToken)
+	wsClient, err := mm.NewWebSocketClient("wss://"+bot.server, client.AuthToken)
 	if err != nil {
 		return err
 	}
-	bot.MM.wsClient = wsClient
+	bot.wsClient = wsClient
 
 	return nil
 }
 
-func (bot *Bot) login() error {
-	if res, err := bot.MM.client.Login(bot.MM.user.Email, bot.MM.user.Password); err != nil {
+func (bot *MM) login() error {
+	if res, err := bot.client.Login(bot.user.Email, bot.user.Password); err != nil {
 		return err
 	} else {
-		bot.MM.user = res.Data.(*mm.User)
+		bot.user = res.Data.(*mm.User)
 		return nil
 	}
 }
 
-func (bot *Bot) setMMTeam() error {
-	if res, err := bot.MM.client.GetInitialLoad(); err != nil {
+func (bot *MM) setTeam() error {
+	if res, err := bot.client.GetInitialLoad(); err != nil {
 		return err
 	} else {
 		initialLoad := res.Data.(*mm.InitialLoad)
 		var botTeam *mm.Team
 		for _, team := range initialLoad.Teams {
-			if team.Name == bot.MM.team {
+			if team.Name == bot.team {
 				botTeam = team
 				break
 			}
 		}
 
 		if botTeam == nil {
-			return fmt.Errorf("Could not find bot team: " + bot.MM.team)
+			return fmt.Errorf("Could not find bot team: " + bot.team)
 		}
 
-		bot.MM.client.SetTeamId(botTeam.Id)
+		bot.client.SetTeamId(botTeam.Id)
 		return nil
 	}
 }
 
-func (bot *Bot) joinMMChannels() error {
+func (bot *MM) joinChannels() error {
 	var channelList *mm.ChannelList
 
 	for {
-		if channelsResult, err := bot.MM.client.GetMoreChannelsPage(0, 200); err != nil {
+		if channelsResult, err := bot.client.GetMoreChannelsPage(0, 200); err != nil {
 			return err
 		} else {
 			channelList = channelsResult.Data.(*mm.ChannelList)
@@ -84,7 +140,7 @@ func (bot *Bot) joinMMChannels() error {
 			}
 
 			for _, channel := range *channelList {
-				if _, err := bot.MM.client.JoinChannel(channel.Id); err != nil {
+				if _, err := bot.client.JoinChannel(channel.Id); err != nil {
 					return err
 				}
 			}
@@ -94,8 +150,8 @@ func (bot *Bot) joinMMChannels() error {
 	return nil
 }
 
-func (bot *Bot) getMMChannels() error {
-	if res, err := bot.MM.client.GetChannels(""); err != nil {
+func (bot *MM) getChannels() error {
+	if res, err := bot.client.GetChannels(""); err != nil {
 		return err
 	} else {
 		channelList := res.Data.(*mm.ChannelList)
@@ -105,38 +161,38 @@ func (bot *Bot) getMMChannels() error {
 			c := mm.Channel(*channel)
 			channelMap[channel.Name] = &c
 		}
-		bot.MM.channels = channelMap
+		bot.channels = channelMap
 
 		return nil
 	}
 }
 
-func (bot *Bot) GetMMUser(userId string) (*mm.User, error) {
-	if user, ok := bot.MM.users[userId]; ok {
+func (bot *MM) GetUser(userId string) (*mm.User, error) {
+	if user, ok := bot.users[userId]; ok {
 		return user, nil
 	}
 
-	if res, err := bot.MM.client.GetUser(userId, ""); err != nil {
+	if res, err := bot.client.GetUser(userId, ""); err != nil {
 		return nil, err
 	} else {
-		bot.MM.users[userId] = res.Data.(*mm.User)
-		return bot.MM.users[userId], nil
+		bot.users[userId] = res.Data.(*mm.User)
+		return bot.users[userId], nil
 	}
 }
 
-func (bot *Bot) getMMUsers() error {
-	if res, err := bot.MM.client.GetRecentlyActiveUsers(bot.MM.client.TeamId); err != nil {
+func (bot *MM) getUsers() error {
+	if res, err := bot.client.GetRecentlyActiveUsers(bot.client.TeamId); err != nil {
 		return err
 	} else {
-		bot.MM.users = res.Data.(map[string]*mm.User)
+		bot.users = res.Data.(map[string]*mm.User)
 		return nil
 	}
 }
 
-func (bot *Bot) ListenMM(eventHandler func(*mm.WebSocketEvent)) {
-	bot.MM.eventHandler = eventHandler
+func (bot *MM) Listen(eventHandler func(*mm.WebSocketEvent)) {
+	bot.eventHandler = eventHandler
 	for {
-		err := bot.listenMM()
+		err := bot.listen()
 		if err != nil {
 			if err == errQuit {
 				bot.doneChan <- struct{}{}
@@ -148,22 +204,22 @@ func (bot *Bot) ListenMM(eventHandler func(*mm.WebSocketEvent)) {
 	}
 }
 
-func (bot *Bot) listenMM() error {
+func (bot *MM) listen() error {
 	bot.log("Listening to MM events")
 
-	bot.closeMMWSClient()
-	if err := bot.MM.wsClient.Connect(); err != nil {
+	bot.closeWSClient()
+	if err := bot.wsClient.Connect(); err != nil {
 		return err
 	}
 
-	bot.MM.wsClient.Listen()
+	bot.wsClient.Listen()
 	timeoutChan := make(chan struct{})
 	quitChan := make(chan struct{})
 	go bot.startHeartbeat(timeoutChan, quitChan)
 	for {
 		select {
-		case ev := <-bot.MM.wsClient.EventChannel:
-			bot.MM.eventHandler(ev)
+		case ev := <-bot.wsClient.EventChannel:
+			bot.eventHandler(ev)
 		case <-timeoutChan:
 			return ErrTimeout
 		case q := <-bot.quitChan:
@@ -176,16 +232,16 @@ func (bot *Bot) listenMM() error {
 	return nil
 }
 
-func (bot *Bot) startHeartbeat(timeoutChan chan struct{}, quitChan chan struct{}) {
+func (bot *MM) startHeartbeat(timeoutChan chan struct{}, quitChan chan struct{}) {
 	bot.log("Starting MM heartbeat")
 	for {
-		bot.MM.wsClient.GetStatusesByIds([]string{bot.MM.user.Id})
+		bot.wsClient.GetStatusesByIds([]string{bot.user.Id})
 		timeout := time.After(bot.heartbeatInterval)
 		select {
 		case <-quitChan:
 			bot.log("Stopped MM heartbeat")
 			return
-		case <-bot.MM.wsClient.ResponseChannel:
+		case <-bot.wsClient.ResponseChannel:
 			time.Sleep(bot.heartbeatInterval)
 		case <-timeout:
 			timeoutChan <- struct{}{}
@@ -194,13 +250,13 @@ func (bot *Bot) startHeartbeat(timeoutChan chan struct{}, quitChan chan struct{}
 	}
 }
 
-func (bot *Bot) PostToMM(channelName, userName, message string) error {
-	channel, ok := bot.MM.channels[channelName]
+func (bot *MM) Post(channelName, userName, message string) error {
+	channel, ok := bot.channels[channelName]
 	if !ok {
 		return fmt.Errorf("Could not find channel: %s", channelName)
 	}
 
-	_, err := bot.MM.client.CreatePost(&mm.Post{
+	_, err := bot.client.CreatePost(&mm.Post{
 		ChannelId: channel.Id,
 		Message:   fmt.Sprintf("[@%s]: %s", userName, message),
 	})
@@ -213,8 +269,8 @@ func (bot *Bot) PostToMM(channelName, userName, message string) error {
 	return nil
 }
 
-func (bot *Bot) closeMMWSClient() {
-	if bot.MM.wsClient.Conn != nil {
-		bot.MM.wsClient.Close()
+func (bot *MM) closeWSClient() {
+	if bot.wsClient.Conn != nil {
+		bot.wsClient.Close()
 	}
 }

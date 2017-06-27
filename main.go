@@ -61,15 +61,15 @@ func handleMMEvent(bot *Bot, ev *mm.WebSocketEvent) {
 
 func handleMMPostEvent(bot *Bot, event *mm.WebSocketEvent) {
 	post := mm.PostFromJson(strings.NewReader(event.Data["post"].(string)))
-	if post != nil && post.UserId != bot.MM.user.Id {
-		user, err := bot.GetMMUser(post.UserId)
+	if post != nil && post.UserId != bot.mm.user.Id {
+		user, err := bot.mm.GetUser(post.UserId)
 		if err != nil {
 			bot.log("Error in getting MM user: %s %+v", post.UserId, err)
 			return
 		}
 
 		channel := event.Data["channel_name"].(string)
-		if err := bot.PostToSlack(channel, user.Email, post.Message); err != nil {
+		if err := bot.slack.Post(channel, user.Email, post.Message); err != nil {
 			bot.log("Error in posting to slack: %+v", err)
 			return
 		}
@@ -85,20 +85,20 @@ func handleSlackEvent(bot *Bot, event *slack.RTMEvent) {
 
 func handleSlackPostEvent(bot *Bot, event *slack.MessageEvent) {
 	if event.User != "" {
-		user, ok := bot.GetSlackUser(event.User)
+		user, ok := bot.slack.GetUser(event.User)
 		if !ok {
 			bot.log("Error in getting Slack user: %s", event.User)
 			return
 		}
 
-		channel, ok := bot.GetSlackChannel(event.Channel)
+		channel, ok := bot.slack.GetChannel(event.Channel)
 		if !ok {
 			bot.log("Error in getting Slack channel: %s", event.Channel)
 			return
 		}
 
-		text := bot.SubsSlackUserIdMentions(event.Text)
-		if err := bot.PostToMM(channel.Name, user.Name, text); err != nil {
+		text := bot.slack.SubsUserIdMentions(event.Text)
+		if err := bot.mm.Post(channel.Name, user.Name, text); err != nil {
 			bot.log("Error in posting to MM: %+v", err)
 			return
 		}

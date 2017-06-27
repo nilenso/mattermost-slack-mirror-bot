@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	mm "github.com/mattermost/platform/model"
 	"github.com/nlopes/slack"
@@ -10,36 +9,19 @@ import (
 	"time"
 )
 
-var ErrTimeout = errors.New("Timeout")
-
 type Bot struct {
-	*MM
-	*Slack
+	mm    *MM
+	slack *Slack
 
-	location          *time.Location
-	heartbeatInterval time.Duration
-	quitChan          chan struct{}
-	doneChan          chan struct{}
-	logger            *log.Logger
+	location *time.Location
+	logger   *log.Logger
 }
 
 func NewBot(server, team, email, password, slackToken, location string, heartbeatInterval time.Duration, logWriter io.Writer) (*Bot, error) {
 	bot := &Bot{
-		MM: &MM{
-			server: server,
-			team:   team,
-			user: &mm.User{
-				Email:    email,
-				Password: password,
-			},
-		},
-		Slack: &Slack{
-			token: slackToken,
-		},
-		heartbeatInterval: heartbeatInterval,
-		quitChan:          make(chan struct{}),
-		doneChan:          make(chan struct{}),
-		logger:            log.New(logWriter, "", 0),
+		mm:     NewMMBot(server, team, email, password, heartbeatInterval),
+		slack:  NewSlackBot(slackToken),
+		logger: log.New(logWriter, "", 0),
 	}
 
 	loc, err := time.LoadLocation(location)
@@ -47,46 +29,16 @@ func NewBot(server, team, email, password, slackToken, location string, heartbea
 		return nil, fmt.Errorf("Error in loading tz: %+v", err)
 	}
 	bot.location = loc
+	bot.mm.log = bot.log
+	bot.slack.log = bot.log
 
-	if err := bot.createMMClient(); err != nil {
-		return nil, fmt.Errorf("Error in creating mm client: %+v", err)
+	if err := bot.mm.Start(); err != nil {
+		return nil, err
 	}
-	bot.log("Created MM client")
 
-	if err := bot.setMMTeam(); err != nil {
-		return nil, fmt.Errorf("Error in setting up mm team: %+v", err)
+	if err := bot.slack.Start(); err != nil {
+		return nil, err
 	}
-	bot.log("Set up MM team")
-
-	if err := bot.getMMUsers(); err != nil {
-		return nil, fmt.Errorf("Error in getting mm users: %+v", err)
-	}
-	bot.log("Got MM users")
-
-	if err := bot.joinMMChannels(); err != nil {
-		return nil, fmt.Errorf("Error in joining mm channels: %+v", err)
-	}
-	bot.log("Joined MM channels")
-
-	if err := bot.getMMChannels(); err != nil {
-		return nil, fmt.Errorf("Error in getting mm channels: %+v", err)
-	}
-	bot.log("Got MM channels")
-
-	if err := bot.createSlackClient(); err != nil {
-		return nil, fmt.Errorf("Error in connecting to slack: %+v", err)
-	}
-	bot.log("Created Slack client")
-
-	if err := bot.getSlackUsers(); err != nil {
-		return nil, fmt.Errorf("Error in getting slack users: %+v", err)
-	}
-	bot.log("Got Slack users")
-
-	if err := bot.getSlackChannels(); err != nil {
-		return nil, fmt.Errorf("Error in getting slack channels: %+v", err)
-	}
-	bot.log("Got Slack channels")
 
 	return bot, nil
 }
@@ -98,16 +50,12 @@ func (bot *Bot) log(format string, args ...interface{}) {
 }
 
 func (bot *Bot) Start(mmEventHandler func(*mm.WebSocketEvent), slackEventHandler func(event *slack.RTMEvent)) {
-	go bot.ListenMM(mmEventHandler)
-	go bot.ListenSlack(slackEventHandler)
+	go bot.mm.Listen(mmEventHandler)
+	go bot.slack.Listen(slackEventHandler)
 }
 
 func (bot *Bot) Stop() {
-	bot.closeMMWSClient()
-	bot.Slack.rtmClient.Disconnect()
-	bot.quitChan <- struct{}{}
-	bot.quitChan <- struct{}{}
-	<-bot.doneChan
-	<-bot.doneChan
+	bot.mm.Stop()
+	bot.slack.Stop()
 	bot.log("Stopped Bot")
 }
