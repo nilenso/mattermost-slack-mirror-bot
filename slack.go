@@ -19,6 +19,8 @@ type Slack struct {
 	channelsById   map[string]*slack.Channel
 	client         *slack.Client
 	rtmClient      *slack.RTM
+
+	MM *MM
 }
 
 func NewSlackBot(slackToken string) *Slack {
@@ -117,13 +119,13 @@ func (bot *Slack) GetChannel(channelId string) (*slack.Channel, bool) {
 	return channel, ok
 }
 
-func (bot *Slack) Listen(eventHandler func(event *slack.RTMEvent)) {
+func (bot *Slack) Listen() {
 	bot.log("Listening to Slack events")
 
 	for {
 		select {
 		case ev := <-bot.rtmClient.IncomingEvents:
-			eventHandler(&ev)
+			bot.handleEvent(&ev)
 		case <-bot.quitChan:
 			bot.log("Stopped listening to Slack events")
 			bot.doneChan <- struct{}{}
@@ -132,9 +134,38 @@ func (bot *Slack) Listen(eventHandler func(event *slack.RTMEvent)) {
 	}
 }
 
+func (bot *Slack) handleEvent(event *slack.RTMEvent) {
+	switch ev := event.Data.(type) {
+	case *slack.MessageEvent:
+		bot.handlePostEvent(ev)
+	}
+}
+
+func (bot *Slack) handlePostEvent(event *slack.MessageEvent) {
+	if event.User != "" {
+		user, ok := bot.GetUser(event.User)
+		if !ok {
+			bot.log("Error in getting Slack user: %s", event.User)
+			return
+		}
+
+		channel, ok := bot.GetChannel(event.Channel)
+		if !ok {
+			bot.log("Error in getting Slack channel: %s", event.Channel)
+			return
+		}
+
+		text := bot.subsUserIdMentions(event.Text)
+		if err := bot.MM.Post(channel.Name, user.Name, text); err != nil {
+			bot.log("Error in posting to MM: %+v", err)
+			return
+		}
+	}
+}
+
 var userIdMentionRe = regexp.MustCompile(`<@U[A-Z0-9]+>`)
 
-func (bot *Slack) SubsUserIdMentions(text string) string {
+func (bot *Slack) subsUserIdMentions(text string) string {
 	res := userIdMentionRe.FindAllStringSubmatch(text, -1)
 	if len(res) == 0 {
 		return text

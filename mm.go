@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	mm "github.com/mattermost/platform/model"
+	"strings"
 	"time"
 )
 
@@ -15,14 +16,15 @@ type MM struct {
 	doneChan          chan struct{}
 	log               func(format string, args ...interface{})
 
-	user         *mm.User
-	server       string
-	team         string
-	users        map[string]*mm.User
-	channels     map[string]*mm.Channel
-	client       *mm.Client
-	wsClient     *mm.WebSocketClient
-	eventHandler func(*mm.WebSocketEvent)
+	user     *mm.User
+	server   string
+	team     string
+	users    map[string]*mm.User
+	channels map[string]*mm.Channel
+	client   *mm.Client
+	wsClient *mm.WebSocketClient
+
+	Slack *Slack
 }
 
 var errQuit = errors.New("QUIT")
@@ -189,8 +191,7 @@ func (bot *MM) getUsers() error {
 	}
 }
 
-func (bot *MM) Listen(eventHandler func(*mm.WebSocketEvent)) {
-	bot.eventHandler = eventHandler
+func (bot *MM) Listen() {
 	for {
 		err := bot.listen()
 		if err != nil {
@@ -219,7 +220,7 @@ func (bot *MM) listen() error {
 	for {
 		select {
 		case ev := <-bot.wsClient.EventChannel:
-			bot.eventHandler(ev)
+			bot.handleEvent(ev)
 		case <-timeoutChan:
 			return ErrTimeout
 		case q := <-bot.quitChan:
@@ -245,6 +246,30 @@ func (bot *MM) startHeartbeat(timeoutChan chan struct{}, quitChan chan struct{})
 			time.Sleep(bot.heartbeatInterval)
 		case <-timeout:
 			timeoutChan <- struct{}{}
+			return
+		}
+	}
+}
+
+func (bot *MM) handleEvent(ev *mm.WebSocketEvent) {
+	switch ev.Event {
+	case mm.WEBSOCKET_EVENT_POSTED:
+		bot.handlePostEvent(ev)
+	}
+}
+
+func (bot *MM) handlePostEvent(event *mm.WebSocketEvent) {
+	post := mm.PostFromJson(strings.NewReader(event.Data["post"].(string)))
+	if post != nil && post.UserId != bot.user.Id {
+		user, err := bot.GetUser(post.UserId)
+		if err != nil {
+			bot.log("Error in getting MM user: %s %+v", post.UserId, err)
+			return
+		}
+
+		channel := event.Data["channel_name"].(string)
+		if err := bot.Slack.Post(channel, user.Email, post.Message); err != nil {
+			bot.log("Error in posting to slack: %+v", err)
 			return
 		}
 	}

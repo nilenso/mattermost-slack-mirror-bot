@@ -2,8 +2,6 @@ package main
 
 import (
 	"fmt"
-	mm "github.com/mattermost/platform/model"
-	"github.com/nlopes/slack"
 	"io"
 	"log"
 	"time"
@@ -23,6 +21,8 @@ func NewBot(server, team, email, password, slackToken, location string, heartbea
 		slack:  NewSlackBot(slackToken),
 		logger: log.New(logWriter, "", 0),
 	}
+	bot.slack.MM = bot.mm
+	bot.mm.Slack = bot.slack
 
 	loc, err := time.LoadLocation(location)
 	if err != nil {
@@ -49,9 +49,9 @@ func (bot *Bot) log(format string, args ...interface{}) {
 	bot.logger.Printf(format, args...)
 }
 
-func (bot *Bot) Start(mmEventHandler func(*mm.WebSocketEvent), slackEventHandler func(event *slack.RTMEvent)) {
-	go bot.mm.Listen(mmEventHandler)
-	go bot.slack.Listen(slackEventHandler)
+func (bot *Bot) Start() {
+	go bot.mm.Listen()
+	go bot.slack.Listen()
 }
 
 func (bot *Bot) Stop() {

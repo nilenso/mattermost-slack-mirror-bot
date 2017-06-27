@@ -2,13 +2,10 @@ package main
 
 import (
 	"fmt"
-	mm "github.com/mattermost/platform/model"
-	"github.com/nlopes/slack"
 	"log"
 	"os"
 	"os/signal"
 	"runtime"
-	"strings"
 	"syscall"
 	"time"
 )
@@ -33,9 +30,7 @@ func main() {
 	}
 
 	setupGracefulShutdown(bot)
-	go bot.Start(
-		func(ev *mm.WebSocketEvent) { handleMMEvent(bot, ev) },
-		func(ev *slack.RTMEvent) { handleSlackEvent(bot, ev) })
+	go bot.Start()
 
 	go dumpThreadStacks()
 	select {}
@@ -49,59 +44,6 @@ func dumpThreadStacks() {
 		<-sigs
 		stacklen := runtime.Stack(buf, true)
 		log.Printf("=== received SIGQUIT ===\n*** goroutine dump...\n%s\n*** end\n", buf[:stacklen])
-	}
-}
-
-func handleMMEvent(bot *Bot, ev *mm.WebSocketEvent) {
-	switch ev.Event {
-	case mm.WEBSOCKET_EVENT_POSTED:
-		handleMMPostEvent(bot, ev)
-	}
-}
-
-func handleMMPostEvent(bot *Bot, event *mm.WebSocketEvent) {
-	post := mm.PostFromJson(strings.NewReader(event.Data["post"].(string)))
-	if post != nil && post.UserId != bot.mm.user.Id {
-		user, err := bot.mm.GetUser(post.UserId)
-		if err != nil {
-			bot.log("Error in getting MM user: %s %+v", post.UserId, err)
-			return
-		}
-
-		channel := event.Data["channel_name"].(string)
-		if err := bot.slack.Post(channel, user.Email, post.Message); err != nil {
-			bot.log("Error in posting to slack: %+v", err)
-			return
-		}
-	}
-}
-
-func handleSlackEvent(bot *Bot, event *slack.RTMEvent) {
-	switch ev := event.Data.(type) {
-	case *slack.MessageEvent:
-		handleSlackPostEvent(bot, ev)
-	}
-}
-
-func handleSlackPostEvent(bot *Bot, event *slack.MessageEvent) {
-	if event.User != "" {
-		user, ok := bot.slack.GetUser(event.User)
-		if !ok {
-			bot.log("Error in getting Slack user: %s", event.User)
-			return
-		}
-
-		channel, ok := bot.slack.GetChannel(event.Channel)
-		if !ok {
-			bot.log("Error in getting Slack channel: %s", event.Channel)
-			return
-		}
-
-		text := bot.slack.SubsUserIdMentions(event.Text)
-		if err := bot.mm.Post(channel.Name, user.Name, text); err != nil {
-			bot.log("Error in posting to MM: %+v", err)
-			return
-		}
 	}
 }
 
