@@ -97,7 +97,8 @@ func handleSlackPostEvent(bot *Bot, event *slack.MessageEvent) {
 			return
 		}
 
-		if err := bot.PostToMM(channel.Name, user.Name, event.Text); err != nil {
+		text := bot.SubsSlackUserIdMentions(event.Text)
+		if err := bot.PostToMM(channel.Name, user.Name, text); err != nil {
 			bot.log("Error in posting to MM: %+v", err)
 			return
 		}

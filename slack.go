@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"github.com/nlopes/slack"
+	"regexp"
+	"strings"
 )
 
 type Slack struct {
@@ -83,14 +85,37 @@ func (bot *Bot) ListenSlack(eventHandler func(event *slack.RTMEvent)) {
 
 	for {
 		select {
-		case msg := <-bot.Slack.rtmClient.IncomingEvents:
-			eventHandler(&msg)
+		case ev := <-bot.Slack.rtmClient.IncomingEvents:
+			eventHandler(&ev)
 		case <-bot.quitChan:
 			bot.log("Stopped listening to Slack events")
 			bot.doneChan <- struct{}{}
 			return
 		}
 	}
+}
+
+var userIdMentionRe = regexp.MustCompile(`<@U[A-Z0-9]+>`)
+
+func (bot *Bot) SubsSlackUserIdMentions(text string) string {
+	res := userIdMentionRe.FindAllStringSubmatch(text, -1)
+	if len(res) == 0 {
+		return text
+	}
+
+	subsText := text
+	for _, match := range res {
+		userMention := match[0]
+		userId := strings.TrimSuffix(strings.TrimPrefix(userMention, "<@"), ">")
+		user, ok := bot.GetSlackUser(userId)
+		if !ok {
+			continue
+		}
+
+		subsText = strings.Replace(subsText, userMention, fmt.Sprintf("@%s", user.Name), 1)
+	}
+
+	return subsText
 }
 
 func (bot *Bot) PostToSlack(channelName, userEmail, message string) error {
