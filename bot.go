@@ -13,40 +13,29 @@ import (
 var ErrTimeout = errors.New("Timeout")
 
 type Bot struct {
-	*mm.User
-	mmServer   string
-	mmTeam     string
-	slackToken string
+	*MM
+	*Slack
 
 	location          *time.Location
 	heartbeatInterval time.Duration
 	quitChan          chan struct{}
 	doneChan          chan struct{}
 	logger            *log.Logger
-
-	mmUsers        map[string]*mm.User
-	mmChannels     map[string]*mm.Channel
-	mmClient       *mm.Client
-	mmWSClient     *mm.WebSocketClient
-	mmEventHandler func(*mm.WebSocketEvent)
-
-	slackUsersByEmail   map[string]*slack.User
-	slackChannelsByName map[string]*slack.Channel
-	slackUsersById      map[string]*slack.User
-	slackChannelsById   map[string]*slack.Channel
-	slackClient         *slack.Client
-	slackRTMClient      *slack.RTM
 }
 
 func NewBot(server, team, email, password, slackToken, location string, heartbeatInterval time.Duration, logWriter io.Writer) (*Bot, error) {
 	bot := &Bot{
-		mmServer: server,
-		mmTeam:   team,
-		User: &mm.User{
-			Email:    email,
-			Password: password,
+		MM: &MM{
+			server: server,
+			team:   team,
+			user: &mm.User{
+				Email:    email,
+				Password: password,
+			},
 		},
-		slackToken:        slackToken,
+		Slack: &Slack{
+			token: slackToken,
+		},
 		heartbeatInterval: heartbeatInterval,
 		quitChan:          make(chan struct{}),
 		doneChan:          make(chan struct{}),
@@ -115,7 +104,7 @@ func (bot *Bot) Start(mmEventHandler func(*mm.WebSocketEvent), slackEventHandler
 
 func (bot *Bot) Stop() {
 	bot.closeMMWSClient()
-	bot.slackRTMClient.Disconnect()
+	bot.Slack.rtmClient.Disconnect()
 	bot.quitChan <- struct{}{}
 	bot.quitChan <- struct{}{}
 	<-bot.doneChan

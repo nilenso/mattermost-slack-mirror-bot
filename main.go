@@ -61,7 +61,7 @@ func handleMMEvent(bot *Bot, ev *mm.WebSocketEvent) {
 
 func handleMMPostEvent(bot *Bot, event *mm.WebSocketEvent) {
 	post := mm.PostFromJson(strings.NewReader(event.Data["post"].(string)))
-	if post != nil {
+	if post != nil && post.UserId != bot.MM.user.Id {
 		user, err := bot.GetMMUser(post.UserId)
 		if err != nil {
 			bot.log("Error in getting MM user: %s %+v", post.UserId, err)

@@ -5,21 +5,31 @@ import (
 	"github.com/nlopes/slack"
 )
 
+type Slack struct {
+	token          string
+	usersByEmail   map[string]*slack.User
+	channelsByName map[string]*slack.Channel
+	usersById      map[string]*slack.User
+	channelsById   map[string]*slack.Channel
+	client         *slack.Client
+	rtmClient      *slack.RTM
+}
+
 func (bot *Bot) createSlackClient() error {
-	slackClient := slack.New(bot.slackToken)
+	slackClient := slack.New(bot.Slack.token)
 	if _, err := slackClient.AuthTest(); err != nil {
 		return err
 	}
-	bot.slackClient = slackClient
+	bot.Slack.client = slackClient
 
-	bot.slackRTMClient = bot.slackClient.NewRTM()
-	go bot.slackRTMClient.ManageConnection()
+	bot.Slack.rtmClient = bot.Slack.client.NewRTM()
+	go bot.Slack.rtmClient.ManageConnection()
 
 	return nil
 }
 
 func (bot *Bot) getSlackUsers() error {
-	if users, err := bot.slackClient.GetUsers(); err != nil {
+	if users, err := bot.Slack.client.GetUsers(); err != nil {
 		return err
 	} else {
 		userEmailMap := make(map[string]*slack.User)
@@ -34,19 +44,19 @@ func (bot *Bot) getSlackUsers() error {
 			}
 		}
 
-		bot.slackUsersByEmail = userEmailMap
-		bot.slackUsersById = userIdMap
+		bot.Slack.usersByEmail = userEmailMap
+		bot.Slack.usersById = userIdMap
 		return nil
 	}
 }
 
 func (bot *Bot) GetSlackUser(userId string) (*slack.User, bool) {
-	user, ok := bot.slackUsersById[userId]
+	user, ok := bot.Slack.usersById[userId]
 	return user, ok
 }
 
 func (bot *Bot) getSlackChannels() error {
-	if channels, err := bot.slackClient.GetChannels(true); err != nil {
+	if channels, err := bot.Slack.client.GetChannels(true); err != nil {
 		return err
 	} else {
 		channelNameMap := make(map[string]*slack.Channel)
@@ -57,14 +67,14 @@ func (bot *Bot) getSlackChannels() error {
 			channelIdMap[channel.ID] = &channel
 		}
 
-		bot.slackChannelsByName = channelNameMap
-		bot.slackChannelsById = channelIdMap
+		bot.Slack.channelsByName = channelNameMap
+		bot.Slack.channelsById = channelIdMap
 		return nil
 	}
 }
 
 func (bot *Bot) GetSlackChannel(channelId string) (*slack.Channel, bool) {
-	channel, ok := bot.slackChannelsById[channelId]
+	channel, ok := bot.Slack.channelsById[channelId]
 	return channel, ok
 }
 
@@ -73,7 +83,7 @@ func (bot *Bot) ListenSlack(eventHandler func(event *slack.RTMEvent)) {
 
 	for {
 		select {
-		case msg := <-bot.slackRTMClient.IncomingEvents:
+		case msg := <-bot.Slack.rtmClient.IncomingEvents:
 			eventHandler(&msg)
 		case <-bot.quitChan:
 			bot.log("Stopped listening to Slack events")
@@ -84,16 +94,16 @@ func (bot *Bot) ListenSlack(eventHandler func(event *slack.RTMEvent)) {
 }
 
 func (bot *Bot) PostToSlack(channelName, userEmail, message string) error {
-	channel, ok := bot.slackChannelsByName[channelName]
+	channel, ok := bot.Slack.channelsByName[channelName]
 	if !ok {
 		return fmt.Errorf("Could not find channel: %s", channelName)
 	}
 
-	user, ok := bot.slackUsersByEmail[userEmail]
+	user, ok := bot.Slack.usersByEmail[userEmail]
 	if !ok {
 		return fmt.Errorf("Could not find user: %s", userEmail)
 	}
-	_, _, err := bot.slackClient.PostMessage(channel.ID, message, slack.PostMessageParameters{
+	_, _, err := bot.Slack.client.PostMessage(channel.ID, message, slack.PostMessageParameters{
 		Username:  user.Name,
 		IconURL:   user.Profile.Image48,
 		LinkNames: 1,
