@@ -138,6 +138,22 @@ func (bot *Slack) handleEvent(event *slack.RTMEvent) {
 	switch ev := event.Data.(type) {
 	case *slack.MessageEvent:
 		bot.handlePostEvent(ev)
+	case *slack.ChannelJoinedEvent:
+		bot.handleChannelJoinEvent(ev, false)
+	case *slack.GroupJoinedEvent:
+		jEv := slack.ChannelJoinedEvent(*ev)
+		bot.handleChannelJoinEvent(&jEv, true)
+	}
+}
+
+func (bot *Slack) handleChannelJoinEvent(event *slack.ChannelJoinedEvent, private bool) {
+	channel := event.Channel
+	bot.channelsById[channel.ID] = &channel
+	bot.channelsByName[channel.Name] = &channel
+	bot.log("Joined Slack channel: %s", channel.Name)
+
+	if !private {
+		bot.MM.CreateAndJoinChannel(channel.Name)
 	}
 }
 

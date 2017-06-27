@@ -191,6 +191,31 @@ func (bot *MM) getUsers() error {
 	}
 }
 
+func (bot *MM) CreateAndJoinChannel(channelName string) error {
+	if _, ok := bot.channels[channelName]; ok {
+		return nil
+	}
+
+	if res, err := bot.client.CreateChannel(&mm.Channel{
+		Name:        channelName,
+		DisplayName: channelName,
+		Type:        "O",
+	}); err != nil {
+		return err
+	} else {
+		channel := res.Data.(*mm.Channel)
+		bot.log("Created MM channel: %s", channel.Name)
+
+		if _, err := bot.client.JoinChannel(channel.Id); err != nil {
+			return err
+		}
+		bot.channels[channel.Name] = channel
+		bot.log("Joined MM channel: %s", channel.Name)
+	}
+
+	return nil
+}
+
 func (bot *MM) Listen() {
 	for {
 		err := bot.listen()
@@ -261,17 +286,42 @@ func (bot *MM) handleEvent(ev *mm.WebSocketEvent) {
 func (bot *MM) handlePostEvent(event *mm.WebSocketEvent) {
 	post := mm.PostFromJson(strings.NewReader(event.Data["post"].(string)))
 	if post != nil && post.UserId != bot.user.Id {
-		user, err := bot.GetUser(post.UserId)
-		if err != nil {
-			bot.log("Error in getting MM user: %s %+v", post.UserId, err)
-			return
+		channelName := event.Data["channel_name"].(string)
+		switch post.Type {
+		case mm.POST_ADD_TO_CHANNEL:
+			bot.handleChannelJoinEvent(post, channelName)
+		default:
+			bot.handleMessagePostEvent(post, channelName)
 		}
+	}
+}
 
-		channel := event.Data["channel_name"].(string)
-		if err := bot.Slack.Post(channel, user.Email, post.Message); err != nil {
-			bot.log("Error in posting to slack: %+v", err)
-			return
-		}
+func (bot *MM) handleChannelJoinEvent(post *mm.Post, channelName string) {
+	if res, err := bot.client.GetChannel(post.ChannelId, ""); err != nil {
+		bot.log("Error in getting MM channel: %s %+v", channelName, err)
+		return
+	} else {
+		channel := res.Data.(*mm.ChannelData).Channel
+		bot.channels[channel.Name] = channel
+		bot.log("Joined MM channel: %s", channel.Name)
+	}
+}
+
+func (bot *MM) handleMessagePostEvent(post *mm.Post, channelName string) {
+	if strings.Index(post.Type, mm.POST_SYSTEM_MESSAGE_PREFIX) == 0 {
+		// system event. nothing to do.
+		return
+	}
+
+	user, err := bot.GetUser(post.UserId)
+	if err != nil {
+		bot.log("Error in getting MM user: %s %+v", post.UserId, err)
+		return
+	}
+
+	if err := bot.Slack.Post(channelName, user.Email, post.Message); err != nil {
+		bot.log("Error in posting to slack: %+v", err)
+		return
 	}
 }
 

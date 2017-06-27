@@ -1,14 +1,11 @@
 # Mattermost-Slack Mirroring Bot
 
-Mirrors chats between Mattermost and Slack, both ways. Written in golang. Only works for public channels which exist on both sides.
-The bot never creates a channel on its own.
+Mirrors chats between Mattermost and Slack, both ways. Written in golang.
 
 ## Usage
 
 - Create a user for the bot on the Mattermost server, add it to the relevant team.
 - Create a bot user for Slack.
-- The bot joins all public channels on the Mattermost side automatically but on the Slack side
-  you'll need to invite the bot manually to each channel you want to mirror.
 - Run the bot:
 
 ```
@@ -25,3 +22,9 @@ $ ./mattermost-slack-mirror-bot <mm_server_host> <mm_team> <mm_bot_user_email> <
 - Users are matched by their emails.
 - Slack messages posted by the bot appear to be posted by the matching user.
   But Mattermost messages posted by the bot bear the bot's name.
+- The bot joins all public channels on the Mattermost side automatically but on the Slack side
+  you'll need to invite the bot manually to each channel you want to mirror.
+- If you invite the bot to a public channel on Slack, it will automatically create and/or join
+  the channel with the same name on Mattermost. The reverse does not happen because bots can't
+  create or join channels on Slack on their own.
+- For private groups/channels, you'll need to invite the bot on both the sides to start mirroring.
