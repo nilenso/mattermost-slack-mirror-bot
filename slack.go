@@ -15,8 +15,8 @@ type Slack struct {
 	token          string
 	usersByEmail   map[string]*slack.User
 	channelsByName map[string]*slack.Channel
-	usersById      map[string]*slack.User
-	channelsById   map[string]*slack.Channel
+	usersByID      map[string]*slack.User
+	channelsByID   map[string]*slack.Channel
 	client         *slack.Client
 	rtmClient      *slack.RTM
 
@@ -51,7 +51,7 @@ func (bot *Slack) Start() error {
 }
 
 func (bot *Slack) Stop() {
-	bot.rtmClient.Disconnect()
+	_ = bot.rtmClient.Disconnect()
 	bot.quitChan <- struct{}{}
 	<-bot.doneChan
 }
@@ -74,25 +74,25 @@ func (bot *Slack) getUsers() error {
 		return err
 	} else {
 		userEmailMap := make(map[string]*slack.User)
-		userIdMap := make(map[string]*slack.User)
+		userIDMap := make(map[string]*slack.User)
 
 		for _, user := range users {
 			email := user.Profile.Email
 			if email != "" {
 				user := slack.User(user)
 				userEmailMap[email] = &user
-				userIdMap[user.ID] = &user
+				userIDMap[user.ID] = &user
 			}
 		}
 
 		bot.usersByEmail = userEmailMap
-		bot.usersById = userIdMap
+		bot.usersByID = userIDMap
 		return nil
 	}
 }
 
-func (bot *Slack) GetUser(userId string) (*slack.User, bool) {
-	user, ok := bot.usersById[userId]
+func (bot *Slack) GetUser(userID string) (*slack.User, bool) {
+	user, ok := bot.usersByID[userID]
 	return user, ok
 }
 
@@ -101,21 +101,21 @@ func (bot *Slack) getChannels() error {
 		return err
 	} else {
 		channelNameMap := make(map[string]*slack.Channel)
-		channelIdMap := make(map[string]*slack.Channel)
+		channelIDMap := make(map[string]*slack.Channel)
 		for _, channel := range channels {
 			channel := slack.Channel(channel)
 			channelNameMap[channel.Name] = &channel
-			channelIdMap[channel.ID] = &channel
+			channelIDMap[channel.ID] = &channel
 		}
 
 		bot.channelsByName = channelNameMap
-		bot.channelsById = channelIdMap
+		bot.channelsByID = channelIDMap
 		return nil
 	}
 }
 
-func (bot *Slack) GetChannel(channelId string) (*slack.Channel, bool) {
-	channel, ok := bot.channelsById[channelId]
+func (bot *Slack) GetChannel(channelID string) (*slack.Channel, bool) {
+	channel, ok := bot.channelsByID[channelID]
 	return channel, ok
 }
 
@@ -148,12 +148,14 @@ func (bot *Slack) handleEvent(event *slack.RTMEvent) {
 
 func (bot *Slack) handleChannelJoinEvent(event *slack.ChannelJoinedEvent, private bool) {
 	channel := event.Channel
-	bot.channelsById[channel.ID] = &channel
+	bot.channelsByID[channel.ID] = &channel
 	bot.channelsByName[channel.Name] = &channel
 	bot.log("Joined Slack channel: %s", channel.Name)
 
 	if !private {
-		bot.MM.CreateAndJoinChannel(channel.Name)
+		if err := bot.MM.CreateAndJoinChannel(channel.Name); err != nil {
+			bot.log("Error in creating/joining MM channel: %s", channel.Name)
+		}
 	}
 }
 
@@ -171,7 +173,7 @@ func (bot *Slack) handlePostEvent(event *slack.MessageEvent) {
 			return
 		}
 
-		text := bot.subsUserIdMentions(event.Text)
+		text := bot.subsUserIDMentions(event.Text)
 		if err := bot.MM.Post(channel.Name, user.Name, text); err != nil {
 			bot.log("Error in posting to MM: %+v", err)
 			return
@@ -179,10 +181,10 @@ func (bot *Slack) handlePostEvent(event *slack.MessageEvent) {
 	}
 }
 
-var userIdMentionRe = regexp.MustCompile(`<@U[A-Z0-9]+>`)
+var userIDMentionRe = regexp.MustCompile(`<@U[A-Z0-9]+>`)
 
-func (bot *Slack) subsUserIdMentions(text string) string {
-	res := userIdMentionRe.FindAllStringSubmatch(text, -1)
+func (bot *Slack) subsUserIDMentions(text string) string {
+	res := userIDMentionRe.FindAllStringSubmatch(text, -1)
 	if len(res) == 0 {
 		return text
 	}
@@ -190,8 +192,8 @@ func (bot *Slack) subsUserIdMentions(text string) string {
 	subsText := text
 	for _, match := range res {
 		userMention := match[0]
-		userId := strings.TrimSuffix(strings.TrimPrefix(userMention, "<@"), ">")
-		user, ok := bot.GetUser(userId)
+		userID := strings.TrimSuffix(strings.TrimPrefix(userMention, "<@"), ">")
+		user, ok := bot.GetUser(userID)
 		if !ok {
 			continue
 		}

@@ -169,16 +169,16 @@ func (bot *MM) getChannels() error {
 	}
 }
 
-func (bot *MM) GetUser(userId string) (*mm.User, error) {
-	if user, ok := bot.users[userId]; ok {
+func (bot *MM) GetUser(userID string) (*mm.User, error) {
+	if user, ok := bot.users[userID]; ok {
 		return user, nil
 	}
 
-	if res, err := bot.client.GetUser(userId, ""); err != nil {
+	if res, err := bot.client.GetUser(userID, ""); err != nil {
 		return nil, err
 	} else {
-		bot.users[userId] = res.Data.(*mm.User)
-		return bot.users[userId], nil
+		bot.users[userID] = res.Data.(*mm.User)
+		return bot.users[userID], nil
 	}
 }
 
