@@ -333,7 +333,7 @@ func (bot *MM) Post(channelName, userName, message string) error {
 
 	_, err := bot.client.CreatePost(&mm.Post{
 		ChannelId: channel.Id,
-		Message:   fmt.Sprintf("[@%s]: %s", userName, message),
+		Message:   fmt.Sprintf("<@%s>: %s", userName, message),
 	})
 
 	if err != nil {
