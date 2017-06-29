@@ -11,8 +11,8 @@ import (
 )
 
 func main() {
-	if len(os.Args) < 5 {
-		println("Must specify server, team, email and password for the bot")
+	if len(os.Args) < 7 {
+		println("Usage: ./mattermost-slack-mirror-bot <mm_server_host> <mm_team> <mm_bot_user_email> <mm_bot_user_password> <slack_token> <timezone_location>")
 		os.Exit(1)
 	}
 
