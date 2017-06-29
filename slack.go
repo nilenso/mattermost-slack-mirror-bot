@@ -8,9 +8,10 @@ import (
 )
 
 type Slack struct {
+	*Logger
+
 	quitChan chan struct{}
 	doneChan chan struct{}
-	log      func(format string, args ...interface{})
 
 	token          string
 	usersByEmail   map[string]*slack.User
@@ -35,17 +36,17 @@ func (bot *Slack) Start() error {
 	if err := bot.createClient(); err != nil {
 		return fmt.Errorf("Error in connecting to slack: %+v", err)
 	}
-	bot.log("Created Slack client")
+	bot.info("Created Slack client")
 
 	if err := bot.getUsers(); err != nil {
 		return fmt.Errorf("Error in getting slack users: %+v", err)
 	}
-	bot.log("Got Slack users")
+	bot.info("Got Slack users")
 
 	if err := bot.getChannels(); err != nil {
 		return fmt.Errorf("Error in getting slack channels: %+v", err)
 	}
-	bot.log("Got Slack channels")
+	bot.info("Got Slack channels")
 
 	return nil
 }
@@ -120,14 +121,14 @@ func (bot *Slack) GetChannel(channelID string) (*slack.Channel, bool) {
 }
 
 func (bot *Slack) Listen() {
-	bot.log("Listening to Slack events")
+	bot.info("Listening to Slack events")
 
 	for {
 		select {
 		case ev := <-bot.rtmClient.IncomingEvents:
 			bot.handleEvent(&ev)
 		case <-bot.quitChan:
-			bot.log("Stopped listening to Slack events")
+			bot.info("Stopped listening to Slack events")
 			bot.doneChan <- struct{}{}
 			return
 		}
@@ -150,11 +151,11 @@ func (bot *Slack) handleChannelJoinEvent(event *slack.ChannelJoinedEvent, privat
 	channel := event.Channel
 	bot.channelsByID[channel.ID] = &channel
 	bot.channelsByName[channel.Name] = &channel
-	bot.log("Joined Slack channel: %s", channel.Name)
+	bot.info("Joined Slack channel: %s", channel.Name)
 
 	if !private {
 		if err := bot.MM.CreateAndJoinChannel(channel.Name); err != nil {
-			bot.log("Error in creating/joining MM channel: %s", channel.Name)
+			bot.error("Error in creating/joining MM channel: %s", channel.Name)
 		}
 	}
 }
@@ -163,19 +164,19 @@ func (bot *Slack) handlePostEvent(event *slack.MessageEvent) {
 	if event.User != "" {
 		user, ok := bot.GetUser(event.User)
 		if !ok {
-			bot.log("Error in getting Slack user: %s", event.User)
+			bot.error("Error in getting Slack user: %s", event.User)
 			return
 		}
 
 		channel, ok := bot.GetChannel(event.Channel)
 		if !ok {
-			bot.log("Error in getting Slack channel: %s", event.Channel)
+			bot.error("Error in getting Slack channel: %s", event.Channel)
 			return
 		}
 
 		text := bot.subsUserIDMentions(event.Text)
 		if err := bot.MM.Post(channel.Name, user.Name, text); err != nil {
-			bot.log("Error in posting to MM: %+v", err)
+			bot.error("Error in posting to MM: %+v", err)
 			return
 		}
 	}
@@ -224,6 +225,6 @@ func (bot *Slack) Post(channelName, userEmail, message string) error {
 		return err
 	}
 
-	bot.log("[MM][%s][%s]: %s", channelName, userEmail, message)
+	bot.debug("[MM][%s][%s]: %s", channelName, userEmail, message)
 	return nil
 }

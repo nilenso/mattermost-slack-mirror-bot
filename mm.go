@@ -11,10 +11,11 @@ import (
 var ErrTimeout = errors.New("Timeout")
 
 type MM struct {
+	*Logger
+
 	heartbeatInterval time.Duration
 	quitChan          chan struct{}
 	doneChan          chan struct{}
-	log               func(format string, args ...interface{})
 
 	user     *mm.User
 	server   string
@@ -47,27 +48,27 @@ func (bot *MM) Start() error {
 	if err := bot.createClient(); err != nil {
 		return fmt.Errorf("Error in creating mm client: %+v", err)
 	}
-	bot.log("Created MM client")
+	bot.info("Created MM client")
 
 	if err := bot.setTeam(); err != nil {
 		return fmt.Errorf("Error in setting up mm team: %+v", err)
 	}
-	bot.log("Set up MM team")
+	bot.info("Set up MM team")
 
 	if err := bot.getUsers(); err != nil {
 		return fmt.Errorf("Error in getting mm users: %+v", err)
 	}
-	bot.log("Got MM users")
+	bot.info("Got MM users")
 
 	if err := bot.joinChannels(); err != nil {
 		return fmt.Errorf("Error in joining mm channels: %+v", err)
 	}
-	bot.log("Joined MM channels")
+	bot.info("Joined MM channels")
 
 	if err := bot.getChannels(); err != nil {
 		return fmt.Errorf("Error in getting mm channels: %+v", err)
 	}
-	bot.log("Got MM channels")
+	bot.info("Got MM channels")
 
 	return nil
 }
@@ -204,13 +205,13 @@ func (bot *MM) CreateAndJoinChannel(channelName string) error {
 		return err
 	} else {
 		channel := res.Data.(*mm.Channel)
-		bot.log("Created MM channel: %s", channel.Name)
+		bot.info("Created MM channel: %s", channel.Name)
 
 		if _, err := bot.client.JoinChannel(channel.Id); err != nil {
 			return err
 		}
 		bot.channels[channel.Name] = channel
-		bot.log("Joined MM channel: %s", channel.Name)
+		bot.info("Joined MM channel: %s", channel.Name)
 	}
 
 	return nil
@@ -224,14 +225,14 @@ func (bot *MM) Listen() {
 				bot.doneChan <- struct{}{}
 				return
 			}
-			bot.log("Error in listening to MM: %+v", err)
+			bot.error("Error in listening to MM: %+v", err)
 		}
 		time.Sleep(time.Second)
 	}
 }
 
 func (bot *MM) listen() error {
-	bot.log("Listening to MM events")
+	bot.info("Listening to MM events")
 
 	bot.closeWSClient()
 	if err := bot.wsClient.Connect(); err != nil {
@@ -250,7 +251,7 @@ func (bot *MM) listen() error {
 			return ErrTimeout
 		case q := <-bot.quitChan:
 			quitChan <- q
-			bot.log("Stopped listening to MM events")
+			bot.info("Stopped listening to MM events")
 			return errQuit
 		}
 	}
@@ -259,13 +260,13 @@ func (bot *MM) listen() error {
 }
 
 func (bot *MM) startHeartbeat(timeoutChan chan struct{}, quitChan chan struct{}) {
-	bot.log("Starting MM heartbeat")
+	bot.info("Starting MM heartbeat")
 	for {
 		bot.wsClient.GetStatusesByIds([]string{bot.user.Id})
 		timeout := time.After(bot.heartbeatInterval)
 		select {
 		case <-quitChan:
-			bot.log("Stopped MM heartbeat")
+			bot.info("Stopped MM heartbeat")
 			return
 		case <-bot.wsClient.ResponseChannel:
 			time.Sleep(bot.heartbeatInterval)
@@ -298,12 +299,12 @@ func (bot *MM) handlePostEvent(event *mm.WebSocketEvent) {
 
 func (bot *MM) handleChannelJoinEvent(post *mm.Post, channelName string) {
 	if res, err := bot.client.GetChannel(post.ChannelId, ""); err != nil {
-		bot.log("Error in getting MM channel: %s %+v", channelName, err)
+		bot.error("Error in getting MM channel: %s %+v", channelName, err)
 		return
 	} else {
 		channel := res.Data.(*mm.ChannelData).Channel
 		bot.channels[channel.Name] = channel
-		bot.log("Joined MM channel: %s", channel.Name)
+		bot.info("Joined MM channel: %s", channel.Name)
 	}
 }
 
@@ -315,12 +316,12 @@ func (bot *MM) handleMessagePostEvent(post *mm.Post, channelName string) {
 
 	user, err := bot.GetUser(post.UserId)
 	if err != nil {
-		bot.log("Error in getting MM user: %s %+v", post.UserId, err)
+		bot.error("Error in getting MM user: %s %+v", post.UserId, err)
 		return
 	}
 
 	if err := bot.Slack.Post(channelName, user.Email, post.Message); err != nil {
-		bot.log("Error in posting to slack: %+v", err)
+		bot.error("Error in posting to slack: %+v", err)
 		return
 	}
 }
@@ -340,7 +341,7 @@ func (bot *MM) Post(channelName, userName, message string) error {
 		return err
 	}
 
-	bot.log("[SK][%s][%s]: %s", channelName, userName, message)
+	bot.debug("[SK][%s][%s]: %s", channelName, userName, message)
 	return nil
 }
 
