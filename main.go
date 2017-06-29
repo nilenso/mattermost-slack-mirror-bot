@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"gopkg.in/yaml.v2"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/signal"
@@ -10,20 +12,37 @@ import (
 	"time"
 )
 
+type ProgArgs struct {
+	MMServerHost      string `yaml:"mm_server_host"`
+	MMTeam            string `yaml:"mm_team"`
+	MMBotUserEmail    string `yaml:"mm_bot_user_email"`
+	MMBotUserPassword string `yaml:"mm_bot_user_password"`
+	SlackToken        string `yaml:"slack_token"`
+	TimezoneLocation  string `yaml:"timezone_location"`
+}
+
 func main() {
-	if len(os.Args) < 7 {
-		println("Usage: ./mattermost-slack-mirror-bot <mm_server_host> <mm_team> <mm_bot_user_email> <mm_bot_user_password> <slack_token> <timezone_location>")
+	if len(os.Args) < 2 {
+		println("Usage: ./mattermost-slack-mirror-bot <config_file>")
 		os.Exit(1)
 	}
 
-	server := os.Args[1]
-	team := os.Args[2]
-	email := os.Args[3]
-	password := os.Args[4]
-	slackToken := os.Args[5]
-	location := os.Args[6]
+	configFile := os.Args[1]
+	content, err := ioutil.ReadFile(configFile)
+	if err != nil {
+		fmt.Printf("Could not read config file: %s\n", configFile)
+		os.Exit(1)
+	}
 
-	bot, err := NewBot(server, team, email, password, slackToken, location, 2*time.Second, os.Stdout)
+	args := ProgArgs{}
+	if err := yaml.Unmarshal(content, &args); err != nil {
+		fmt.Printf("Error in parsing config file: %+v\n", err)
+		os.Exit(1)
+	}
+
+	bot, err := NewBot(
+		args.MMServerHost, args.MMTeam, args.MMBotUserEmail, args.MMBotUserPassword,
+		args.SlackToken, args.TimezoneLocation, 2*time.Second)
 	if err != nil {
 		fmt.Printf("Error in creating bot: %+v\n", err)
 		os.Exit(1)

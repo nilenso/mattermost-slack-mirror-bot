@@ -1,0 +1,6 @@
+mm_server_host: "server.example.com"
+mm_team: "softwaredevs"
+mm_bot_user_email: "mattermost@example.com"
+mm_bot_user_password: "some secret here"
+slack_token: "slack secret token"
+timezone_location: "America/New_York" #should be a value from the IANA Time Zone database

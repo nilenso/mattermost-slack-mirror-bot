@@ -35,3 +35,4 @@ tags
 vendor
 .idea
 mattermost-slack-mirror-bot
+config.yaml

@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"time"
 )
@@ -13,7 +12,7 @@ type Bot struct {
 	slack *Slack
 }
 
-func NewBot(server, team, email, password, slackToken, location string, heartbeatInterval time.Duration, logWriter io.Writer) (*Bot, error) {
+func NewBot(server, team, email, password, slackToken, location string, heartbeatInterval time.Duration) (*Bot, error) {
 	bot := &Bot{
 		mm:    NewMMBot(server, team, email, password, heartbeatInterval),
 		slack: NewSlackBot(slackToken),
