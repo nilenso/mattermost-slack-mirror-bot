@@ -52,6 +52,7 @@ func (bot *Bot) log(format string, args ...interface{}) {
 func (bot *Bot) Start() {
 	go bot.mm.Listen()
 	go bot.slack.Listen()
+	select {}
 }
 
 func (bot *Bot) Stop() {
