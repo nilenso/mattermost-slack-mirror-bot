@@ -15,10 +15,10 @@ const (
 	Debug
 )
 
-var logLevels = map[LogLevel]string{
-	Error: "E",
-	Info:  "I",
-	Debug: "D",
+var LogLevels = map[LogLevel]string{
+	Error: "ERR",
+	Info:  "INF",
+	Debug: "DBG",
 }
 
 type Logger struct {
@@ -35,7 +35,7 @@ func NewLogger(location *time.Location, writer io.Writer) *Logger {
 
 func (logger *Logger) log(level LogLevel, format string, args ...interface{}) {
 	now := time.Now().In(logger.location).Format("2006-01-02 15:04:05")
-	format = fmt.Sprintf("[%s][%s] %s\n", logLevels[level], now, format)
+	format = fmt.Sprintf("[%s][%s] %s\n", LogLevels[level], now, format)
 	logger.del.Printf(format, args...)
 }
 

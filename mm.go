@@ -328,21 +328,32 @@ func (bot *MM) handleMessagePostEvent(post *mm.Post, channelName string) {
 }
 
 func (bot *MM) Post(channelName, userName, message string) error {
+	return bot.post(channelName, userName, message, true)
+}
+
+func (bot *MM) PostNoLogging(channelName, userName, message string) error {
+	return bot.post(channelName, userName, message, false)
+}
+
+func (bot *MM) post(channelName, userName, message string, logDebug bool) error {
 	channel, ok := bot.channels[channelName]
 	if !ok {
 		return fmt.Errorf("Could not find channel: %s", channelName)
 	}
 
-	_, err := bot.client.CreatePost(&mm.Post{
-		ChannelId: channel.Id,
-		Message:   fmt.Sprintf("<@%s>: %s", userName, message),
-	})
+	msg := message
+	if userName != "" {
+		msg = fmt.Sprintf("<@%s>: %s", userName, message)
+	}
+	_, err := bot.client.CreatePost(&mm.Post{ChannelId: channel.Id, Message: msg})
 
 	if err != nil {
 		return err
 	}
 
-	bot.debug("[SK][%s][%s]: %s", channelName, userName, message)
+	if logDebug {
+		bot.debug("[MM][%s][%s]: %s", channelName, userName, message)
+	}
 	return nil
 }
 

@@ -229,6 +229,6 @@ func (bot *Slack) Post(channelName, userEmail, message string) error {
 		return err
 	}
 
-	bot.debug("[MM][%s][%s]: %s", channelName, userEmail, message)
+	bot.debug("[SK][%s][%s]: %s", channelName, userEmail, message)
 	return nil
 }
