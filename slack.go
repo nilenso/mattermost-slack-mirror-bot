@@ -140,6 +140,12 @@ func (bot *Slack) Listen() {
 }
 
 func (bot *Slack) handleEvent(event *slack.RTMEvent) {
+	defer func() {
+		if r := recover(); r != nil {
+			bot.error("Recovered while handling Slack event: %+v", r)
+		}
+	}()
+
 	switch ev := event.Data.(type) {
 	case *slack.MessageEvent:
 		bot.handlePostEvent(ev)
@@ -148,7 +154,15 @@ func (bot *Slack) handleEvent(event *slack.RTMEvent) {
 	case *slack.GroupJoinedEvent:
 		jEv := slack.ChannelJoinedEvent(*ev)
 		bot.handleChannelJoinEvent(&jEv, true)
+	case *slack.TeamJoinEvent:
+		bot.handleTeamJoinEvent(ev)
 	}
+}
+
+func (bot *Slack) handleTeamJoinEvent(event *slack.TeamJoinEvent) {
+	bot.usersByEmail[event.User.Profile.Email] = &event.User
+	bot.usersByID[event.User.ID] = &event.User
+	bot.info("User %s joined the Slack team", event.User.Name)
 }
 
 func (bot *Slack) handleChannelJoinEvent(event *slack.ChannelJoinedEvent, private bool) {

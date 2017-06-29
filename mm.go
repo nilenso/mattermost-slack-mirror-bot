@@ -279,9 +279,27 @@ func (bot *MM) startHeartbeat(timeoutChan chan struct{}, quitChan chan struct{})
 }
 
 func (bot *MM) handleEvent(ev *mm.WebSocketEvent) {
+	defer func() {
+		if r := recover(); r != nil {
+			bot.error("Recovered while handling MM event: %+v", r)
+		}
+	}()
+
 	switch ev.Event {
 	case mm.WEBSOCKET_EVENT_POSTED:
 		bot.handlePostEvent(ev)
+	case mm.WEBSOCKET_EVENT_ADDED_TO_TEAM:
+		bot.handleTeamJoinEvent(ev)
+	}
+}
+func (bot *MM) handleTeamJoinEvent(event *mm.WebSocketEvent) {
+	userID := event.Data["user_id"].(string)
+	if res, err := bot.client.GetUser(userID, ""); err != nil {
+		bot.error("Error in getting MM user: %s %+v", userID, err)
+	} else {
+		user := res.Data.(*mm.User)
+		bot.users[user.Id] = user
+		bot.info("User %s joined the MM team", user.Username)
 	}
 }
 
