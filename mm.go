@@ -69,6 +69,7 @@ func (bot *MM) Start() error {
 		return fmt.Errorf("Error in getting mm channels: %+v", err)
 	}
 	bot.info("Got MM channels")
+	bot.info("Connected to %s/%s", bot.server, bot.team)
 
 	return nil
 }

@@ -33,7 +33,8 @@ func NewSlackBot(slackToken string) *Slack {
 }
 
 func (bot *Slack) Start() error {
-	if err := bot.createClient(); err != nil {
+	serverInfo, err := bot.createClient()
+	if err != nil {
 		return fmt.Errorf("Error in connecting to slack: %+v", err)
 	}
 	bot.info("Created Slack client")
@@ -47,6 +48,7 @@ func (bot *Slack) Start() error {
 		return fmt.Errorf("Error in getting slack channels: %+v", err)
 	}
 	bot.info("Got Slack channels")
+	bot.info("Connected to %s Slack", serverInfo.Team)
 
 	return nil
 }
@@ -57,17 +59,19 @@ func (bot *Slack) Stop() {
 	<-bot.doneChan
 }
 
-func (bot *Slack) createClient() error {
+func (bot *Slack) createClient() (*slack.AuthTestResponse, error) {
 	slackClient := slack.New(bot.token)
-	if _, err := slackClient.AuthTest(); err != nil {
-		return err
+
+	serverInfo, err := slackClient.AuthTest()
+	if err != nil {
+		return nil, err
 	}
 	bot.client = slackClient
 
 	bot.rtmClient = bot.client.NewRTM()
 	go bot.rtmClient.ManageConnection()
 
-	return nil
+	return serverInfo, nil
 }
 
 func (bot *Slack) getUsers() error {
