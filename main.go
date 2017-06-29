@@ -9,17 +9,7 @@ import (
 	"os/signal"
 	"runtime"
 	"syscall"
-	"time"
 )
-
-type ProgArgs struct {
-	MMServerHost      string `yaml:"mm_server_host"`
-	MMTeam            string `yaml:"mm_team"`
-	MMBotUserEmail    string `yaml:"mm_bot_user_email"`
-	MMBotUserPassword string `yaml:"mm_bot_user_password"`
-	SlackToken        string `yaml:"slack_token"`
-	TimezoneLocation  string `yaml:"timezone_location"`
-}
 
 func main() {
 	if len(os.Args) < 2 {
@@ -34,15 +24,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	args := ProgArgs{}
+	args := BotParams{
+		MMHeartbeatInternalSeconds: 2,
+	}
 	if err := yaml.Unmarshal(content, &args); err != nil {
 		fmt.Printf("Error in parsing config file: %+v\n", err)
 		os.Exit(1)
 	}
 
-	bot, err := NewBot(
-		args.MMServerHost, args.MMTeam, args.MMBotUserEmail, args.MMBotUserPassword,
-		args.SlackToken, args.TimezoneLocation, 2*time.Second)
+	bot, err := NewBot(&args)
 	if err != nil {
 		fmt.Printf("Error in creating bot: %+v\n", err)
 		os.Exit(1)

@@ -8,22 +8,37 @@ import (
 
 type Bot struct {
 	*Logger
+	params *BotParams
+
 	mm    *MM
 	slack *Slack
 }
 
-func NewBot(server, team, email, password, slackToken, location string, heartbeatInterval time.Duration) (*Bot, error) {
+type BotParams struct {
+	MMServerHost               string `yaml:"mm_server_host"`
+	MMTeam                     string `yaml:"mm_team"`
+	MMBotUserEmail             string `yaml:"mm_bot_user_email"`
+	MMBotUserPassword          string `yaml:"mm_bot_user_password"`
+	MMHeartbeatInternalSeconds int    `yaml:"mm_heartbeat_interval_secs"`
+	SlackToken                 string `yaml:"slack_token"`
+	TimezoneLocation           string `yaml:"timezone_location"`
+}
+
+func NewBot(params *BotParams) (*Bot, error) {
 	bot := &Bot{
-		mm:    NewMMBot(server, team, email, password, heartbeatInterval),
-		slack: NewSlackBot(slackToken),
+		params: params,
+		mm: NewMMBot(params.MMServerHost, params.MMTeam, params.MMBotUserEmail, params.MMBotUserPassword,
+			time.Duration(params.MMHeartbeatInternalSeconds)*time.Second),
+		slack: NewSlackBot(params.SlackToken),
 	}
 	bot.slack.MM = bot.mm
 	bot.mm.Slack = bot.slack
 
-	loc, err := time.LoadLocation(location)
+	loc, err := time.LoadLocation(params.TimezoneLocation)
 	if err != nil {
 		return nil, fmt.Errorf("Error in loading tz: %+v", err)
 	}
+
 	logger := NewLogger(loc, os.Stdout)
 	bot.Logger = logger
 	bot.mm.Logger = logger
