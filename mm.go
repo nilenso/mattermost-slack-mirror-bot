@@ -8,7 +8,10 @@ import (
 	"time"
 )
 
-var ErrTimeout = errors.New("Timeout")
+var (
+	ErrTimeout    = errors.New("Timeout")
+	ErrChanClosed = errors.New("Listen channel closed")
+)
 
 type MM struct {
 	*Logger
@@ -246,7 +249,10 @@ func (bot *MM) listen() error {
 	go bot.startHeartbeat(timeoutChan, quitChan)
 	for {
 		select {
-		case ev := <-bot.wsClient.EventChannel:
+		case ev, ok := <-bot.wsClient.EventChannel:
+			if !ok {
+				return ErrChanClosed
+			}
 			bot.handleEvent(ev)
 		case <-timeoutChan:
 			return ErrTimeout
