@@ -244,20 +244,21 @@ func (bot *MM) listen() error {
 	}
 
 	bot.wsClient.Listen()
-	timeoutChan := make(chan struct{})
-	quitChan := make(chan struct{})
-	go bot.startHeartbeat(timeoutChan, quitChan)
+	heartbeatTimeoutChan := make(chan struct{})
+	heartbeatQuitChan := make(chan struct{})
+	go bot.startHeartbeat(heartbeatTimeoutChan, heartbeatQuitChan)
 	for {
 		select {
 		case ev, ok := <-bot.wsClient.EventChannel:
 			if !ok {
+				heartbeatQuitChan <- struct{}{}
 				return ErrChanClosed
 			}
 			bot.handleEvent(ev)
-		case <-timeoutChan:
+		case <-heartbeatTimeoutChan:
 			return ErrTimeout
 		case q := <-bot.quitChan:
-			quitChan <- q
+			heartbeatQuitChan <- q
 			bot.info("Stopped listening to MM events")
 			return errQuit
 		}
