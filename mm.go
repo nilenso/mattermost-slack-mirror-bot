@@ -281,7 +281,7 @@ func (bot *MM) startHeartbeat(timeoutChan chan struct{}, quitChan chan struct{})
 func (bot *MM) handleEvent(ev *mm.WebSocketEvent) {
 	defer func() {
 		if r := recover(); r != nil {
-			bot.error("Recovered while handling MM event: %+v", r)
+			bot.error("Recovered while handling MM event: %+v %+v", ev, r)
 		}
 	}()
 

@@ -142,7 +142,7 @@ func (bot *Slack) Listen() {
 func (bot *Slack) handleEvent(event *slack.RTMEvent) {
 	defer func() {
 		if r := recover(); r != nil {
-			bot.error("Recovered while handling Slack event: %+v", r)
+			bot.error("Recovered while handling Slack event: %+v %+v", event, r)
 		}
 	}()
 
